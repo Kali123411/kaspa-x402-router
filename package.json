@@ -4,6 +4,19 @@
   "type": "module",
   "private": true,
   "description": "Cross-chain x402 payment router: pay USDC on Base, consume Kaspa x402 services (settled in KAS via kx402).",
-  "scripts": { "start": "node src/server.mjs", "buyer": "node src/buyer.mjs" },
-  "license": "MIT"
+  "scripts": {
+    "start": "node src/server.mjs",
+    "buyer": "node src/buyer.mjs"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@coinbase/x402": "^2.1.0",
+    "@x402/core": "^2.19.0",
+    "@x402/evm": "^2.19.0",
+    "@x402/express": "^2.19.0",
+    "@x402/fetch": "^2.19.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "viem": "^2.55.5"
+  }
 }

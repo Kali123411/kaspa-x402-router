@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
+import { createFacilitatorConfig } from "@coinbase/x402";
 import { SERVICES, DEFAULT_USD, BASE_TARGETS } from "./services.mjs";
 import { refreshRate, rateInfo, priceUsd } from "./pricing.mjs";
 import { payBaseService } from "./outbound.mjs";
@@ -17,7 +18,9 @@ for (const [k, v] of Object.entries({ EVM_ADDRESS, EVM_NETWORK, FACILITATOR_URL,
   if (!v) { console.error(`missing env ${k}`); process.exit(1); }
 }
 
-const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
+// Mainnet: Coinbase CDP facilitator (signed JWT auth from CDP_API_KEY_ID/SECRET). Testnet: x402.org.
+const useCdp = !!(process.env.CDP_API_KEY_ID && process.env.CDP_API_KEY_SECRET);
+const facilitatorClient = new HTTPFacilitatorClient(useCdp ? createFacilitatorConfig() : { url: FACILITATOR_URL });
 const resourceServer = new x402ResourceServer(facilitatorClient).register(EVM_NETWORK, new ExactEvmScheme());
 
 const app = express();
