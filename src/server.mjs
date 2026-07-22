@@ -4,6 +4,7 @@
 import { config } from "dotenv";
 import express from "express";
 import { spawn } from "node:child_process";
+import { mkdirSync, appendFileSync } from "node:fs";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
@@ -39,6 +40,15 @@ app.get("/", (_req, res) =>
 );
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
+// Pre-check /call BEFORE the payment gate: reject an unknown service with a clean 400 so a buyer is
+// never charged for a call we can't fulfill.
+app.get("/call", (req, res, next) => {
+  if (!SERVICES[req.query.service]) {
+    return res.status(400).json({ error: `unknown service '${req.query.service ?? ""}'; choose one of: ${Object.keys(SERVICES).join(", ")}` });
+  }
+  next();
+});
+
 // --- paid proxy route (USDC on Base gates it) ---
 app.use(
   paymentMiddleware(
@@ -47,6 +57,7 @@ app.use(
         accepts: {
           scheme: "exact",
           // FX pricing: charge the Kaspa service's cost (in USDC at the live rate) + margin, per service.
+          // (Unknown services are rejected by the pre-check below, before this runs — so svc is valid here.)
           price: (context) => priceUsd(SERVICES[context.adapter.getQueryParam?.("service")]?.usd ?? DEFAULT_USD),
           network: EVM_NETWORK,
           payTo: EVM_ADDRESS,
@@ -68,12 +79,13 @@ app.get("/call", async (req, res) => {
   const qs = new URLSearchParams(rest).toString();
   const targetUrl = qs ? `${svc.url}?${qs}` : svc.url;
   try {
-    const { result, settlement } = await payKaspa(targetUrl);
+    const { result, settlement } = await payKaspaSerial(targetUrl);
     res.json({ ok: true, via: "kaspa-x402-router", target: targetUrl, kaspaSettlement: settlement, result });
   } catch (e) {
-    // Payment was already collected on Base here. MVP surfaces the failure; refund/retry is a TODO.
-    console.error("kaspa settlement failed (USDC already collected):", String(e).slice(0, 300));
-    res.status(502).json({ ok: false, error: "kaspa settlement failed", detail: String(e).slice(0, 300) });
+    // USDC was already collected on Base. Record durably so the buyer can be refunded.
+    logFailedSettlement({ service, target: targetUrl, priceUsd: priceUsd(svc.usd), error: String(e).slice(0, 300) });
+    console.error("kaspa settlement failed (USDC already collected — logged for refund):", String(e).slice(0, 300));
+    res.status(502).json({ ok: false, error: "kaspa settlement failed — your payment was logged for refund" });
   }
 });
 
@@ -99,6 +111,25 @@ app.get("/outbound", async (req, res) => {
     res.status(502).json({ ok: false, error: "base payment failed", detail: String(e).slice(0, 300) });
   }
 });
+
+// Serialize KAS settlements: the payer spends a SINGLE UTXO, so concurrent calls would race to
+// double-spend it and all but one would fail. Requests queue and settle one at a time.
+let _kasQueue = Promise.resolve();
+function payKaspaSerial(url) {
+  const run = _kasQueue.then(() => payKaspa(url));
+  _kasQueue = run.then(() => {}, () => {}); // keep the chain alive regardless of outcome
+  return run;
+}
+
+// Durable record of paid-but-unsettled calls (USDC collected, KAS leg failed) so no buyer is silently
+// charged — a manual/auto refund can be issued by matching the receiver's USDC inflow near `ts`.
+const FAILED_LOG = process.env.HOME + "/.k402/router-failed-settlements.jsonl";
+function logFailedSettlement(rec) {
+  try {
+    mkdirSync(FAILED_LOG.replace(/\/[^/]+$/, ""), { recursive: true });
+    appendFileSync(FAILED_LOG, JSON.stringify({ ts: Math.floor(Date.now() / 1000), ...rec }) + "\n");
+  } catch { /* best-effort */ }
+}
 
 // Shell out to kx402 (structured --json) to pay the Kaspa gateway; return { result, settlement }
 // where settlement is a verifiable receipt of the KAS leg (txid + amount + finality).

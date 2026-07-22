@@ -19,7 +19,7 @@ It is **not an asset bridge.** Nothing is locked, minted, or custodied in a pool
 
 ## Status
 
-Corridor #1 (**inbound: Base → Kaspa**) is proven end-to-end on testnet: a buyer paid USDC on **Base Sepolia** and received a live result from a **Kaspa mainnet** service, with the KAS leg settled on-chain. MVP — see the roadmap.
+Corridor #1 (**inbound: Base → Kaspa**) is **live on Base mainnet** at **[router.kaspa-402.org](https://router.kaspa-402.org)** — buyers pay USDC on Base (via the Coinbase CDP facilitator) and get results from Kaspa mainnet services, each with an on-chain settlement receipt. The KAS working float is **self-funding** (an auto-rebalancer recycles the payer↔payee loop), and health is on a dashboard panel. Not audited — see the disclaimer.
 
 ## How it works
 
@@ -58,18 +58,22 @@ The `max()` accounts for the gateways' 0.5-KAS floor, so cheap services never se
 
 - ~~Settlement receipt (verifiable KAS-leg txid in the response)~~ ✓
 - ~~FX-based pricing + configurable margin~~ ✓
-- Corridor #2 — **outbound** (Kaspa agents paying for Base x402 services): the outbound leg (router pays a Base x402 service in USDC, funded by corridor-#1 earnings) is **proven** (`src/outbound.mjs`). Remaining: a Kaspa x402 gateway to *collect* the KAS (same pattern as any kaspa-402 gateway) → calls the router's outbound leg.
-- Mainnet (Base mainnet USDC via the CDP facilitator)
+- ~~Mainnet on Base (Coinbase CDP facilitator)~~ ✓ — **live at `router.kaspa-402.org`**
+- ~~Self-funding: KAS auto-rebalancer (payer↔payee loop)~~ ✓
+- ~~Health monitoring (dashboard panel)~~ ✓
+- ~~Hardening: concurrency-safe (serialized) KAS settlement, durable failed-settlement log, reject-before-charge~~ ✓ · remaining: active alerting + auto-refund
+- Corridor #2 — **outbound** (Kaspa agents paying for Base x402 services): the outbound leg is **proven** (`src/outbound.mjs`, `/outbound`); remaining is a Kaspa x402 gateway to *collect* the KAS.
 - More chains — the router is the wedge into Kaspa-as-an-interop-hub
 
 ## Layout
 
-- `src/server.mjs` — the router (corridor #1: Base-side x402 front door + Kaspa-side settlement)
+- `src/server.mjs` — the router (corridor #1 `/call` + corridor #2 collect `/outbound`)
 - `src/pricing.mjs` — live KAS-USD rate + the FX price formula
+- `src/rebalance.mjs` — KAS auto-rebalancer (sweeps payer↔payee; runs on a systemd timer)
 - `src/buyer.mjs` — a test client that pays and fetches (corridor #1)
 - `src/outbound.mjs` — corridor #2 outbound leg: pay a Base x402 service as a client
 - `src/echo-target.mjs` — a minimal Base x402 service used to test the outbound leg
-- `src/services.mjs` — whitelist of Kaspa x402 gateways (each with its USD price)
+- `src/services.mjs` — whitelists: Kaspa gateways (each with its USD price) + Base targets
 
 ## License
 
