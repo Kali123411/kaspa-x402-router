@@ -7,11 +7,12 @@ import { spawn } from "node:child_process";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
-import { SERVICES, DEFAULT_USD } from "./services.mjs";
+import { SERVICES, DEFAULT_USD, BASE_TARGETS } from "./services.mjs";
 import { refreshRate, rateInfo, priceUsd } from "./pricing.mjs";
+import { payBaseService } from "./outbound.mjs";
 config();
 
-const { EVM_ADDRESS, EVM_NETWORK, FACILITATOR_URL, PORT, KX402, KX402_CONFIG } = process.env;
+const { EVM_ADDRESS, EVM_NETWORK, FACILITATOR_URL, PORT, KX402, KX402_CONFIG, ROUTER_SECRET } = process.env;
 for (const [k, v] of Object.entries({ EVM_ADDRESS, EVM_NETWORK, FACILITATOR_URL, KX402, KX402_CONFIG })) {
   if (!v) { console.error(`missing env ${k}`); process.exit(1); }
 }
@@ -70,6 +71,29 @@ app.get("/call", async (req, res) => {
     // Payment was already collected on Base here. MVP surfaces the failure; refund/retry is a TODO.
     console.error("kaspa settlement failed (USDC already collected):", String(e).slice(0, 300));
     res.status(502).json({ ok: false, error: "kaspa settlement failed", detail: String(e).slice(0, 300) });
+  }
+});
+
+// Corridor #2 collect-side backend: a Kaspa x402 gateway collects the KAS, then calls this
+// (secret-gated) to have the router pay the target Base x402 service and return its result.
+app.get("/outbound", async (req, res) => {
+  if (!ROUTER_SECRET || req.get("x-gateway-secret") !== ROUTER_SECRET) {
+    return res.status(403).json({ error: "forbidden" });
+  }
+  const { target, ...rest } = req.query;
+  const t = BASE_TARGETS[target];
+  if (!t) {
+    return res.status(400).json({ error: `unknown base target '${target}'; choose: ${Object.keys(BASE_TARGETS).join(", ")}` });
+  }
+  const qs = new URLSearchParams(rest).toString();
+  const url = qs ? `${t.url}?${qs}` : t.url;
+  try {
+    const base = await payBaseService(url);
+    res.json({ ok: true, via: "kaspa-x402-router (outbound)", target: url, base });
+  } catch (e) {
+    // KAS was already collected upstream here. MVP surfaces the failure; refund is a TODO.
+    console.error("base payment failed (KAS already collected):", String(e).slice(0, 300));
+    res.status(502).json({ ok: false, error: "base payment failed", detail: String(e).slice(0, 300) });
   }
 });
 

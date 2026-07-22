@@ -12,3 +12,10 @@ export const SERVICES = {
 };
 
 export const DEFAULT_USD = 0.2; // fallback price for an unrecognized service id
+
+// Corridor #2 (outbound): Base x402 services the router will pay for on a Kaspa agent's behalf.
+// Whitelisted so a Kaspa caller can't make the router pay an arbitrary/expensive Base URL.
+// `usd` is the Base service's price — the collect gateway must charge KAS covering this + margin.
+export const BASE_TARGETS = {
+  echo: { url: process.env.ECHO_URL || "http://localhost:4403/echo", usd: 0.01 }, // local test target
+};
