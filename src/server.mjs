@@ -57,8 +57,8 @@ app.get("/call", async (req, res) => {
   const qs = new URLSearchParams(rest).toString();
   const targetUrl = qs ? `${base}?${qs}` : base;
   try {
-    const result = await payKaspa(targetUrl);
-    res.json({ ok: true, via: "kaspa-x402 facilitator", target: targetUrl, result });
+    const { result, settlement } = await payKaspa(targetUrl);
+    res.json({ ok: true, via: "kaspa-x402-router", target: targetUrl, kaspaSettlement: settlement, result });
   } catch (e) {
     // Payment was already collected on Base here. MVP surfaces the failure; refund/retry is a TODO.
     console.error("kaspa settlement failed (USDC already collected):", String(e).slice(0, 300));
@@ -66,7 +66,8 @@ app.get("/call", async (req, res) => {
   }
 });
 
-// Shell out to kx402 to pay the Kaspa gateway; return the parsed service result.
+// Shell out to kx402 to pay the Kaspa gateway; return { result, settlement } where settlement is a
+// verifiable receipt of the KAS leg (txid + amount + finality) parsed from kx402's output.
 function payKaspa(url) {
   return new Promise((resolve, reject) => {
     const p = spawn(process.execPath, [KX402, "pay", url, "--config-file", KX402_CONFIG], { timeout: 180000 });
@@ -74,11 +75,23 @@ function payKaspa(url) {
     p.stdout.on("data", (d) => (out += d));
     p.stderr.on("data", (d) => (err += d));
     p.on("close", (code) => {
+      const txid = (out.match(/settled tx (\w{60,72})/) || [])[1] || null;
+      const amountKas = (out.match(/paid ([\d.]+) KAS/) || [])[1] || null;
+      const finality = (out.match(/finality:\s*(\w+)/) || [])[1] || null;
+      const settlement = txid
+        ? {
+            network: "kaspa:mainnet",
+            txid,
+            amountKas: amountKas ? Number(amountKas) : null,
+            finality,
+            explorer: `https://explorer.kaspa.org/txs/${txid}`,
+          }
+        : null;
       const line = out.split("\n").find((l) => l.startsWith("result:"));
       if (line) {
-        try { return resolve(JSON.parse(line.slice(7).trim()).result); } catch { /* fall through */ }
+        try { return resolve({ result: JSON.parse(line.slice(7).trim()).result, settlement }); } catch { /* fall through */ }
       }
-      if (code === 0 && out.includes("paid")) return resolve({ note: "paid; no structured result", tail: out.slice(-400) });
+      if (code === 0 && txid) return resolve({ result: { note: "paid; no structured result" }, settlement });
       reject(new Error((err || out).slice(-300) || `kx402 exited ${code}`));
     });
     p.on("error", reject);
