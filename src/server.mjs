@@ -11,7 +11,7 @@ import { createFacilitatorConfig } from "@coinbase/x402";
 import { SERVICES, DEFAULT_USD, BASE_TARGETS } from "./services.mjs";
 import { refreshRate, rateInfo, priceUsd } from "./pricing.mjs";
 import { payBaseService } from "./outbound.mjs";
-config();
+config({ path: process.env.ENV_FILE || ".env" });
 
 const { EVM_ADDRESS, EVM_NETWORK, FACILITATOR_URL, PORT, KX402, KX402_CONFIG, ROUTER_SECRET } = process.env;
 for (const [k, v] of Object.entries({ EVM_ADDRESS, EVM_NETWORK, FACILITATOR_URL, KX402, KX402_CONFIG })) {
@@ -137,5 +137,5 @@ await refreshRate();
 setInterval(refreshRate, 60_000).unref();
 
 app.listen(Number(PORT || 4402), () =>
-  console.log(`kaspa-x402-router on :${PORT || 4402}  (receiver ${EVM_ADDRESS} on ${EVM_NETWORK}; KAS-USD ${rateInfo().kasUsd}, margin ${rateInfo().margin})`),
+  console.log(`kaspa-x402-router on :${PORT || 4402}  (receiver ${EVM_ADDRESS} on ${EVM_NETWORK}; facilitator ${useCdp ? "CDP/mainnet" : "x402.org/testnet"}; KAS-USD ${rateInfo().kasUsd}, margin ${rateInfo().margin})`),
 );
