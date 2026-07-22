@@ -35,18 +35,26 @@ for (const s of ["eric.kaspa.stream", "maxim.kaspa.stream", "jake.kaspa.green", 
 const rpc = new k.RpcClient({ url, encoding: k.Encoding.Borsh, networkId: "mainnet" });
 await rpc.connect({ timeoutDuration: 15000, retries: 1 });
 
+const STATUS_FILE = process.env.HOME + "/.k402/rebalance-status.json";
+const st = { ts: Math.floor(Date.now() / 1000), action: "error", minKas: Number(MIN_UTXO) / 1e8, payerLargestKas: null, payerTotalKas: null, payerUtxos: null, txid: null };
+
 try {
   const { entries: payerUtxos } = await rpc.getUtxosByAddresses([payerAddr]);
   const payerLargest = payerUtxos.reduce((m, e) => (amtOf(e) > m ? amtOf(e) : m), 0n);
   const payerTotal = payerUtxos.reduce((s, e) => s + amtOf(e), 0n);
+  st.payerLargestKas = Number(payerLargest) / 1e8;
+  st.payerTotalKas = Number(payerTotal) / 1e8;
+  st.payerUtxos = payerUtxos.length;
   console.log(ts(), `payer largest ${kas(payerLargest)} / total ${kas(payerTotal)} (${payerUtxos.length} utxos) | min ${kas(MIN_UTXO)}`);
 
   if (payerLargest >= MIN_UTXO) {
+    st.action = "healthy";
     console.log(ts(), "healthy — no action");
   } else {
     const { entries: payeeUtxos } = await rpc.getUtxosByAddresses([payeeAddr]);
     const loopTotal = [...payerUtxos, ...payeeUtxos].reduce((s, e) => s + amtOf(e), 0n);
     if (loopTotal < MIN_UTXO) {
+      st.action = "starved";
       console.error(ts(), `STARVED: loop total ${kas(loopTotal)} < min ${kas(MIN_UTXO)} — add KAS (or convert some earned USDC).`);
       process.exitCode = 2;
     } else {
@@ -65,9 +73,15 @@ try {
       });
       let txid;
       for (const tx of transactions) { tx.sign([payerPriv, payeePriv]); txid = String(await tx.submit(rpc)); }
+      st.action = "rebalanced";
+      st.txid = txid;
       console.log(ts(), `done — ${transactions.length} tx(s), final ${txid}`);
     }
   }
 } finally {
   await rpc.disconnect();
+  try {
+    fs.mkdirSync(STATUS_FILE.replace(/\/[^/]+$/, ""), { recursive: true });
+    fs.writeFileSync(STATUS_FILE, JSON.stringify(st));
+  } catch { /* status file is best-effort */ }
 }
