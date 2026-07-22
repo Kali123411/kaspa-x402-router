@@ -8,6 +8,7 @@ import { mkdirSync, appendFileSync } from "node:fs";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
+import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { createFacilitatorConfig } from "@coinbase/x402";
 import { SERVICES, DEFAULT_USD, BASE_TARGETS } from "./services.mjs";
 import { refreshRate, rateInfo, priceUsd } from "./pricing.mjs";
@@ -64,6 +65,33 @@ app.use(
         },
         description: "Pay USDC on Base; the router pays the target Kaspa x402 service in KAS and returns its result + a settlement receipt. Price = Kaspa cost × live FX + margin.",
         mimeType: "application/json",
+        // Bazaar discovery: describe how to call /call so facilitators/agents can catalog + invoke it.
+        extensions: {
+          ...declareDiscoveryExtension({
+            method: "GET",
+            input: { service: "exposure", address: "kaspa:qpz2vgvlxhmyhmt22h538pjzmvvd52nuut80y5zulgpvyerlskvvwm7n4uk5a" },
+            inputSchema: {
+              type: "object",
+              properties: {
+                service: { type: "string", enum: Object.keys(SERVICES), description: "Kaspa service to invoke" },
+                address: { type: "string", description: "kaspa: address — exposure, cluster, reserve (covenantAddress), or ghost target" },
+                q: { type: "string", description: "question — ask (Kaspa-expert RAG)" },
+                asset: { type: "string", description: "krc20:TICKER or krc721:NAME — research" },
+                scriptHex: { type: "string", description: "covenant script hex — redteam" },
+                covenantAddress: { type: "string", description: "covenant address — reserve" },
+                target: { type: "string", description: "kaspa: address or txid — ghost (fund trace)" },
+              },
+              required: ["service"],
+            },
+            output: {
+              example: {
+                ok: true, via: "kaspa-x402-router",
+                kaspaSettlement: { network: "kaspa:mainnet", txid: "25f02ff4…", amountKas: 1.06, finality: "accepted", explorer: "https://explorer.kaspa.org/txs/…" },
+                result: { "…": "service-specific payload (e.g. exposure score, entity cluster, covenant findings)" },
+              },
+            },
+          }),
+        },
       },
     },
     resourceServer,
