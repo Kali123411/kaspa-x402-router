@@ -58,15 +58,17 @@ The `max()` accounts for the gateways' 0.5-KAS floor, so cheap services never se
 
 - ~~Settlement receipt (verifiable KAS-leg txid in the response)~~ ✓
 - ~~FX-based pricing + configurable margin~~ ✓
-- Corridor #2 — **outbound**: Kaspa agents paying for Base x402 services
+- Corridor #2 — **outbound** (Kaspa agents paying for Base x402 services): the outbound leg (router pays a Base x402 service in USDC, funded by corridor-#1 earnings) is **proven** (`src/outbound.mjs`). Remaining: a Kaspa x402 gateway to *collect* the KAS (same pattern as any kaspa-402 gateway) → calls the router's outbound leg.
 - Mainnet (Base mainnet USDC via the CDP facilitator)
 - More chains — the router is the wedge into Kaspa-as-an-interop-hub
 
 ## Layout
 
-- `src/server.mjs` — the router (Base-side x402 front door + Kaspa-side settlement)
+- `src/server.mjs` — the router (corridor #1: Base-side x402 front door + Kaspa-side settlement)
 - `src/pricing.mjs` — live KAS-USD rate + the FX price formula
-- `src/buyer.mjs` — a test client that pays and fetches
+- `src/buyer.mjs` — a test client that pays and fetches (corridor #1)
+- `src/outbound.mjs` — corridor #2 outbound leg: pay a Base x402 service as a client
+- `src/echo-target.mjs` — a minimal Base x402 service used to test the outbound leg
 - `src/services.mjs` — whitelist of Kaspa x402 gateways (each with its USD price)
 
 ## License
