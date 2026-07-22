@@ -61,7 +61,7 @@ The `max()` accounts for the gateways' 0.5-KAS floor, so cheap services never se
 - ~~Mainnet on Base (Coinbase CDP facilitator)~~ ✓ — **live at `router.kaspa-402.org`**
 - ~~Self-funding: KAS auto-rebalancer (payer↔payee loop)~~ ✓
 - ~~Health monitoring (dashboard panel)~~ ✓
-- ~~Hardening: concurrency-safe (serialized) KAS settlement, durable failed-settlement log, reject-before-charge~~ ✓ · remaining: active alerting + auto-refund
+- ~~Hardening: serialized KAS settlement, durable failed-settlement log, reject-before-charge, active alerting~~ ✓ · remaining: auto-refund
 - Corridor #2 — **outbound** (Kaspa agents paying for Base x402 services): the outbound leg is **proven** (`src/outbound.mjs`, `/outbound`); remaining is a Kaspa x402 gateway to *collect* the KAS.
 - More chains — the router is the wedge into Kaspa-as-an-interop-hub
 
@@ -70,6 +70,7 @@ The `max()` accounts for the gateways' 0.5-KAS floor, so cheap services never se
 - `src/server.mjs` — the router (corridor #1 `/call` + corridor #2 collect `/outbound`)
 - `src/pricing.mjs` — live KAS-USD rate + the FX price formula
 - `src/rebalance.mjs` — KAS auto-rebalancer (sweeps payer↔payee; runs on a systemd timer)
+- `src/alert.mjs` — alerting: rebalancer stale/starved, float low, router down, failed settlements (set `ALERT_WEBHOOK`)
 - `src/buyer.mjs` — a test client that pays and fetches (corridor #1)
 - `src/outbound.mjs` — corridor #2 outbound leg: pay a Base x402 service as a client
 - `src/echo-target.mjs` — a minimal Base x402 service used to test the outbound leg
