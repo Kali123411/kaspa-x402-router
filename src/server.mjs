@@ -66,33 +66,34 @@ app.get("/call", async (req, res) => {
   }
 });
 
-// Shell out to kx402 to pay the Kaspa gateway; return { result, settlement } where settlement is a
-// verifiable receipt of the KAS leg (txid + amount + finality) parsed from kx402's output.
+// Shell out to kx402 (structured --json) to pay the Kaspa gateway; return { result, settlement }
+// where settlement is a verifiable receipt of the KAS leg (txid + amount + finality).
 function payKaspa(url) {
   return new Promise((resolve, reject) => {
-    const p = spawn(process.execPath, [KX402, "pay", url, "--config-file", KX402_CONFIG], { timeout: 180000 });
+    const p = spawn(process.execPath, [KX402, "pay", url, "--json", "--config-file", KX402_CONFIG], { timeout: 180000 });
     let out = "", err = "";
     p.stdout.on("data", (d) => (out += d));
     p.stderr.on("data", (d) => (err += d));
     p.on("close", (code) => {
-      const txid = (out.match(/settled tx (\w{60,72})/) || [])[1] || null;
-      const amountKas = (out.match(/paid ([\d.]+) KAS/) || [])[1] || null;
-      const finality = (out.match(/finality:\s*(\w+)/) || [])[1] || null;
+      let r;
+      try { r = JSON.parse(out); } catch {
+        return reject(new Error((err || out).slice(-300) || `kx402 exited ${code}: no JSON`));
+      }
+      if (!(r.status >= 200 && r.status < 300)) {
+        return reject(new Error(`kaspa gateway ${r.status}: ${JSON.stringify(r.body).slice(0, 200)}`));
+      }
+      // settlement txid from the gateway's PAYMENT-RESPONSE header if present, else the payer's broadcast txid
+      const txid = r.settlement?.transaction || r.txid || null;
       const settlement = txid
         ? {
             network: "kaspa:mainnet",
             txid,
-            amountKas: amountKas ? Number(amountKas) : null,
-            finality,
+            amountKas: r.offer?.amount ? Number(r.offer.amount) / 1e8 : null,
+            finality: r.settlement?.finality || "accepted",
             explorer: `https://explorer.kaspa.org/txs/${txid}`,
           }
         : null;
-      const line = out.split("\n").find((l) => l.startsWith("result:"));
-      if (line) {
-        try { return resolve({ result: JSON.parse(line.slice(7).trim()).result, settlement }); } catch { /* fall through */ }
-      }
-      if (code === 0 && txid) return resolve({ result: { note: "paid; no structured result" }, settlement });
-      reject(new Error((err || out).slice(-300) || `kx402 exited ${code}`));
+      resolve({ result: r.body?.result ?? r.body, settlement });
     });
     p.on("error", reject);
   });
