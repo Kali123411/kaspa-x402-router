@@ -1,0 +1,9 @@
+{
+  "name": "kaspa-x402-router",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Cross-chain x402 payment router: pay USDC on Base, consume Kaspa x402 services (settled in KAS via kx402).",
+  "scripts": { "start": "node src/server.mjs", "buyer": "node src/buyer.mjs" },
+  "license": "MIT"
+}
