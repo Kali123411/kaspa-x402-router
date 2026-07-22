@@ -57,3 +57,30 @@ if (changed) {
   console.log(alerts.length ? `(unchanged) ${alerts.length} active alert(s)` : "all healthy");
 }
 fs.writeFileSync(STATE, JSON.stringify({ alerts, failedCount, ts: now }));
+
+// --- Bazaar listing watch: check the CDP catalog until we're indexed, then alert once. ---
+const BAZAAR_STATUS = `${HOME}/.k402/bazaar-status.json`;
+let bz = { listed: false };
+try { bz = JSON.parse(fs.readFileSync(BAZAAR_STATUS, "utf8")); } catch {}
+if (!bz.listed) {
+  try {
+    const { createFacilitatorConfig } = await import("@coinbase/x402");
+    const fc = createFacilitatorConfig();
+    const auth = fc.createAuthHeaders ? await fc.createAuthHeaders("discovery/search") : { headers: {} };
+    const res = await fetch(fc.url + "/discovery/search?q=" + encodeURIComponent("kaspa-402"), { headers: auth.headers || {}, signal: AbortSignal.timeout(15000) });
+    const j = await res.json();
+    const items = j.resources || j.items || [];
+    const mine = items.filter((r) => JSON.stringify(r).includes("kaspa-402.org"));
+    const listed = mine.length > 0;
+    const resource = mine[0]?.resource || mine[0]?.resourceUrl || null;
+    if (listed) {
+      const msg = `🎉 **kaspa-x402-router** is now LISTED in the Coinbase x402 Bazaar — agents can discover it${resource ? ` (${resource})` : ""}`;
+      if (WEBHOOK) { try { await fetch(WEBHOOK, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ content: msg }) }); } catch {} }
+      try { fs.appendFileSync(`${HOME}/.k402/router-alerts.log`, `${new Date().toISOString()} ${msg}\n`); } catch {}
+      console.log(msg);
+    }
+    fs.writeFileSync(BAZAAR_STATUS, JSON.stringify({ listed, resource, checkedTs: now }));
+  } catch (e) { console.error("bazaar check failed:", String(e).slice(0, 120)); }
+} else {
+  console.log("bazaar: already listed");
+}
