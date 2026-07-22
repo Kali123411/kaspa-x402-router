@@ -35,7 +35,7 @@ npm install
 #   FACILITATOR_URL=https://x402.org/facilitator
 #   EVM_ADDRESS=0x...            # receiver wallet
 #   EVM_NETWORK=eip155:84532     # Base Sepolia
-#   PRICE=$0.20
+#   MARGIN=0.20                  # router spread over the Kaspa cost (default 0.20)
 #   KX402=/path/to/kx402/src/kx402.mjs   KX402_CONFIG=/path/to/.env.mainnet
 
 npm start        # facilitator on :4402
@@ -44,10 +44,20 @@ npm start        # facilitator on :4402
 node src/buyer.mjs "http://localhost:4402/call?service=exposure&address=kaspa:..."
 ```
 
+## Pricing
+
+Per-request FX pricing. The Base price for a call is computed from the target Kaspa service's cost at the live KAS-USD rate, plus a margin:
+
+```
+price(USDC) = max(serviceUSD, 0.5 KAS × rate) × (1 + MARGIN)   # rounded up to the cent
+```
+
+The `max()` accounts for the gateways' 0.5-KAS floor, so cheap services never sell below cost. `GET /` returns the live rate and the current price table.
+
 ## Roadmap
 
-- Return the Kaspa settlement tx hash in the response (verifiable receipt of the KAS leg)
-- FX-based pricing + configurable spread (Kaspa USD price → USDC + margin)
+- ~~Settlement receipt (verifiable KAS-leg txid in the response)~~ ✓
+- ~~FX-based pricing + configurable margin~~ ✓
 - Corridor #2 — **outbound**: Kaspa agents paying for Base x402 services
 - Mainnet (Base mainnet USDC via the CDP facilitator)
 - More chains — the router is the wedge into Kaspa-as-an-interop-hub
@@ -55,8 +65,9 @@ node src/buyer.mjs "http://localhost:4402/call?service=exposure&address=kaspa:..
 ## Layout
 
 - `src/server.mjs` — the router (Base-side x402 front door + Kaspa-side settlement)
+- `src/pricing.mjs` — live KAS-USD rate + the FX price formula
 - `src/buyer.mjs` — a test client that pays and fetches
-- `src/services.mjs` — whitelist of Kaspa x402 gateways
+- `src/services.mjs` — whitelist of Kaspa x402 gateways (each with its USD price)
 
 ## License
 

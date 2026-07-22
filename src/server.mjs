@@ -7,11 +7,12 @@ import { spawn } from "node:child_process";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
-import { SERVICES } from "./services.mjs";
+import { SERVICES, DEFAULT_USD } from "./services.mjs";
+import { refreshRate, rateInfo, priceUsd } from "./pricing.mjs";
 config();
 
-const { EVM_ADDRESS, EVM_NETWORK, FACILITATOR_URL, PRICE, PORT, KX402, KX402_CONFIG } = process.env;
-for (const [k, v] of Object.entries({ EVM_ADDRESS, EVM_NETWORK, FACILITATOR_URL, PRICE, KX402, KX402_CONFIG })) {
+const { EVM_ADDRESS, EVM_NETWORK, FACILITATOR_URL, PORT, KX402, KX402_CONFIG } = process.env;
+for (const [k, v] of Object.entries({ EVM_ADDRESS, EVM_NETWORK, FACILITATOR_URL, KX402, KX402_CONFIG })) {
   if (!v) { console.error(`missing env ${k}`); process.exit(1); }
 }
 
@@ -23,13 +24,13 @@ const app = express();
 // --- unpaid routes ---
 app.get("/", (_req, res) =>
   res.json({
-    service: "kaspa-x402 facilitator",
+    service: "kaspa-x402-router",
     corridor: "Base (USDC) → Kaspa (KAS)",
-    price: PRICE,
+    pricing: { model: "max(serviceUSD, 0.5 KAS × rate) × (1 + margin)", ...rateInfo() },
+    prices: Object.fromEntries(Object.entries(SERVICES).map(([k, v]) => [k, priceUsd(v.usd)])),
     network: EVM_NETWORK,
     receiver: EVM_ADDRESS,
     usage: "GET /call?service=<id>&<params>  (pay USDC on Base, get the Kaspa service result)",
-    services: Object.keys(SERVICES),
   }),
 );
 app.get("/health", (_req, res) => res.json({ ok: true }));
@@ -39,8 +40,14 @@ app.use(
   paymentMiddleware(
     {
       "GET /call": {
-        accepts: [{ scheme: "exact", price: PRICE, network: EVM_NETWORK, payTo: EVM_ADDRESS }],
-        description: "Pay USDC on Base; the facilitator pays the target Kaspa x402 service in KAS and returns its result.",
+        accepts: {
+          scheme: "exact",
+          // FX pricing: charge the Kaspa service's cost (in USDC at the live rate) + margin, per service.
+          price: (context) => priceUsd(SERVICES[context.adapter.getQueryParam?.("service")]?.usd ?? DEFAULT_USD),
+          network: EVM_NETWORK,
+          payTo: EVM_ADDRESS,
+        },
+        description: "Pay USDC on Base; the router pays the target Kaspa x402 service in KAS and returns its result + a settlement receipt. Price = Kaspa cost × live FX + margin.",
         mimeType: "application/json",
       },
     },
@@ -50,12 +57,12 @@ app.use(
 
 app.get("/call", async (req, res) => {
   const { service, ...rest } = req.query;
-  const base = SERVICES[service];
-  if (!base) {
+  const svc = SERVICES[service];
+  if (!svc) {
     return res.status(400).json({ error: `unknown service '${service}'; choose one of: ${Object.keys(SERVICES).join(", ")}` });
   }
   const qs = new URLSearchParams(rest).toString();
-  const targetUrl = qs ? `${base}?${qs}` : base;
+  const targetUrl = qs ? `${svc.url}?${qs}` : svc.url;
   try {
     const { result, settlement } = await payKaspa(targetUrl);
     res.json({ ok: true, via: "kaspa-x402-router", target: targetUrl, kaspaSettlement: settlement, result });
@@ -99,6 +106,9 @@ function payKaspa(url) {
   });
 }
 
+await refreshRate();
+setInterval(refreshRate, 60_000).unref();
+
 app.listen(Number(PORT || 4402), () =>
-  console.log(`kaspa-x402 facilitator on :${PORT || 4402}  (receiver ${EVM_ADDRESS} on ${EVM_NETWORK}, facilitator ${FACILITATOR_URL})`),
+  console.log(`kaspa-x402-router on :${PORT || 4402}  (receiver ${EVM_ADDRESS} on ${EVM_NETWORK}; KAS-USD ${rateInfo().kasUsd}, margin ${rateInfo().margin})`),
 );
