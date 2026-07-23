@@ -70,10 +70,12 @@ The `max()` accounts for the gateways' 0.5-KAS floor, so cheap services never se
 - ~~Mainnet on Base (Coinbase CDP facilitator)~~ ✓ — **live at `router.kaspa-402.org`**
 - ~~Self-funding: KAS auto-rebalancer (payer↔payee loop)~~ ✓
 - ~~Health monitoring (dashboard panel)~~ ✓
-- ~~Hardening: serialized KAS settlement, durable failed-settlement log, reject-before-charge, active alerting~~ ✓ · remaining: auto-refund
+- ~~Hardening: serialized KAS settlement, reject-before-charge, active alerting~~ ✓
 - ~~Bazaar discovery — canonical resource URL + discovery extension, indexed on agentic.market~~ ✓
 - ~~Corridor #2 — **outbound** (Kaspa agents paying for Base x402 services)~~ ✓ — **certified end-to-end on mainnet** (see the runbook)
-- Remaining: per-target dynamic pricing for corridor #2, multi-UTXO payer for concurrency, auto-refund
+- ~~Outbound price cap — refuse a Base target that would overcharge the payer~~ ✓
+- ~~Refunds on a failed KAS leg~~ — **not needed**: the x402 middleware cancels the USDC settlement on a ≥400 response, so a failed call never charges the buyer (verified on mainnet). The failed-call log is an observability signal, not a refund ledger.
+- Multi-UTXO payer for concurrency — deferred: needs `kx402` to expose UTXO pinning so the router can assign a distinct UTXO per concurrent call (today settlements are correctly serialized). Not needed at current volume.
 - More chains — the router is the wedge into Kaspa-as-an-interop-hub
 
 ## Layout
