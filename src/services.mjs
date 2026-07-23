@@ -26,6 +26,17 @@ export const BASE_TARGETS = {
     usd: 0.01,
     pathParams: { contract: /^0x[0-9a-fA-F]{40}$/ },
   },
+
+  // --- agentic.market top-10 leaderboard imports (price = real probed 402 amount = the spend cap) ---
+  // Only services that fit the outbound gateway's KAS band (~0.5 KAS ≈ $0.014) are here. Excluded:
+  // Claude/Venice ($10) & Deepgram ($1) — need a higher-priced gateway; CoinMarketCap — 402 was
+  // malformed ($10B on BSC); ChatGPT /models — free (nothing to pay). POST targets take ?body=<json>.
+  tripadvisor: { url: "https://tripadvisor.x402.paysponge.com/api/v1/location/{locationId}/details", usd: 0.01, pathParams: { locationId: /^[0-9]{1,12}$/ } },
+  exa: { url: "https://api.exa.ai/contents", method: "POST", usd: 0.001 },
+  thegraph: { url: "https://gateway.thegraph.com/api/x402/subgraphs/id/{subgraph_id}", method: "POST", usd: 0.01, pathParams: { subgraph_id: /^[A-Za-z0-9]{20,80}$/ } },
+  alchemy: { url: "https://x402.alchemy.com/{chainNetwork}/v2", method: "POST", usd: 0.001, pathParams: { chainNetwork: /^[a-z0-9-]{3,30}$/ } },
+  parallel: { url: "https://parallelmpp.dev/api/search", method: "POST", usd: 0.01 },
+  perplexity: { url: "https://pplx.x402.paysponge.com/search", method: "POST", usd: 0.01 },
 };
 
 // Build the concrete target URL: substitute {placeholder} path params (each validated against the

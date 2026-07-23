@@ -153,20 +153,23 @@ app.get("/outbound", async (req, res) => {
   if (!ROUTER_SECRET || req.get("x-gateway-secret") !== ROUTER_SECRET) {
     return res.status(403).json({ error: "forbidden" });
   }
-  const { target, ...rest } = req.query;
+  const { target, body: bodyParam, ...rest } = req.query;
   const t = BASE_TARGETS[target];
   if (!t) {
     return res.status(400).json({ error: `unknown base target '${target}'; choose: ${Object.keys(BASE_TARGETS).join(", ")}` });
   }
-  let url;
+  const method = t.method || "GET";
+  let url, body;
   try {
     url = buildTargetUrl(t, rest); // substitute validated path params (e.g. {contract}); rest → query
+    // POST targets take their input as a JSON body, passed by the caller as ?body=<json>.
+    if (method === "POST") body = bodyParam ? JSON.parse(bodyParam) : {};
   } catch (e) {
-    return res.status(400).json({ error: String(e.message) });
+    return res.status(400).json({ error: method === "POST" && bodyParam ? "invalid 'body' param (must be JSON)" : String(e.message) });
   }
   try {
     // Cap the spend at the target's whitelisted price so a service can't overcharge the outbound payer.
-    const base = await payBaseService(url, { maxUsd: t.usd });
+    const base = await payBaseService(url, { method, body, maxUsd: t.usd });
     res.json({ ok: true, via: "kaspa-x402-router (outbound)", target: url, base });
   } catch (e) {
     // KAS was already collected upstream here. MVP surfaces the failure; refund is a TODO.
