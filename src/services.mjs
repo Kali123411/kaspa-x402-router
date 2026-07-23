@@ -37,6 +37,11 @@ export const BASE_TARGETS = {
   alchemy: { url: "https://x402.alchemy.com/{chainNetwork}/v2", method: "POST", usd: 0.001, pathParams: { chainNetwork: /^[a-z0-9-]{3,30}$/ } },
   parallel: { url: "https://parallelmpp.dev/api/search", method: "POST", usd: 0.01 },
   perplexity: { url: "https://pplx.x402.paysponge.com/search", method: "POST", usd: 0.01 },
+
+  // --- higher tier (>$0.02): only reachable via the kaspa-402-outbound-hi gateway (tierMax 1.50) ---
+  // Deepgram speech-to-text ($1): POST {"url":"https://…/audio.wav"} (or audio bytes). Excluded still:
+  // Claude/Venice ($10) would need a third even-higher tier (~360 KAS/call) — impractical, left out.
+  deepgram: { url: "https://deepgram.x402.paysponge.com/v1/listen", method: "POST", usd: 1.00 },
 };
 
 // Build the concrete target URL: substitute {placeholder} path params (each validated against the

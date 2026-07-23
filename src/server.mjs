@@ -153,10 +153,17 @@ app.get("/outbound", async (req, res) => {
   if (!ROUTER_SECRET || req.get("x-gateway-secret") !== ROUTER_SECRET) {
     return res.status(403).json({ error: "forbidden" });
   }
-  const { target, body: bodyParam, ...rest } = req.query;
+  const { target, body: bodyParam, tierMax: tierMaxRaw, ...rest } = req.query;
   const t = BASE_TARGETS[target];
   if (!t) {
     return res.status(400).json({ error: `unknown base target '${target}'; choose: ${Object.keys(BASE_TARGETS).join(", ")}` });
+  }
+  // Tier ceiling: how much USD this request's KAS actually covers. provider2 sets it authoritatively
+  // per collecting gateway (the caller can't) and defaults conservatively. A target priced above the
+  // ceiling means the caller paid a cheap-tier gateway for a pricey service → refuse before paying.
+  const tierMax = Number(tierMaxRaw ?? 0.02);
+  if (t.usd > tierMax + 1e-9) {
+    return res.status(400).json({ error: `target '${target}' ($${t.usd}) exceeds this gateway's tier ceiling ($${tierMax}) — use the higher-tier outbound gateway` });
   }
   const method = t.method || "GET";
   let url, body;
