@@ -20,6 +20,12 @@ for (const [k, v] of Object.entries({ EVM_ADDRESS, EVM_NETWORK, FACILITATOR_URL,
   if (!v) { console.error(`missing env ${k}`); process.exit(1); }
 }
 
+// Canonical resource URL for discovery. Without this, the x402 middleware derives the resource from
+// the LIVE request URL (protocol+host+originalUrl) — so /call?service=ask&q=hi and /call?service=…&address=…
+// each become a DIFFERENT resource that CDP sees exactly once. Pinning one stable, query-less URL means
+// every payment echoes the same resource, so CDP's indexer catalogs a single, canonical entry.
+const RESOURCE_URL = process.env.ROUTER_RESOURCE_URL || "https://router.kaspa-402.org/call";
+
 // Mainnet: Coinbase CDP facilitator (signed JWT auth from CDP_API_KEY_ID/SECRET). Testnet: x402.org.
 const useCdp = !!(process.env.CDP_API_KEY_ID && process.env.CDP_API_KEY_SECRET);
 const facilitatorClient = new HTTPFacilitatorClient(useCdp ? createFacilitatorConfig() : { url: FACILITATOR_URL });
@@ -66,6 +72,12 @@ app.use(
           network: EVM_NETWORK,
           payTo: EVM_ADDRESS,
         },
+        // Canonical, query-less resource URL + a searchable name/tags so CDP catalogs ONE stable entry
+        // (not a distinct resource per query string). These are metadata only — not part of the signed
+        // EIP-3009 authorization — so settlement is unaffected.
+        resource: RESOURCE_URL,
+        serviceName: "Kaspa x402 Router",
+        tags: ["kaspa", "cross-chain", "usdc", "base", "router"],
         description: "Pay USDC on Base; the router pays the target Kaspa x402 service in KAS and returns its result + a settlement receipt. Price = Kaspa cost × live FX + margin.",
         mimeType: "application/json",
         // Bazaar discovery: describe how to call /call so facilitators/agents can catalog + invoke it.
