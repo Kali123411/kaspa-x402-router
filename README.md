@@ -19,12 +19,21 @@ It is **not an asset bridge.** Nothing is locked, minted, or custodied in a pool
 
 ## Status
 
-Corridor #1 (**inbound: Base → Kaspa**) is **live on Base mainnet** at **[router.kaspa-402.org](https://router.kaspa-402.org)** — buyers pay USDC on Base (via the Coinbase CDP facilitator) and get results from Kaspa mainnet services, each with an on-chain settlement receipt. The KAS working float is **self-funding** (an auto-rebalancer recycles the payer↔payee loop), and health is on a dashboard panel. Not audited — see the disclaimer.
+**Both directions are live and certified on Base mainnet.**
+
+- **Corridor #1 — inbound (Base → Kaspa):** live at **[router.kaspa-402.org](https://router.kaspa-402.org)**. Buyers pay USDC on Base (via the Coinbase CDP facilitator) and get results from Kaspa mainnet services, each with an on-chain settlement receipt. It is **discoverable on [agentic.market](https://agentic.market/services/router-kaspa-402-org)** (Coinbase's x402 marketplace), so agents can find and call it automatically.
+- **Corridor #2 — outbound (Kaspa → Base):** certified end-to-end. A Kaspa agent holding only KAS pays a Kaspa x402 gateway, and the router pays the target Base x402 service in USDC on its behalf — result and KAS receipt flow back. The collected KAS lands in the same payee the rebalancer sweeps, so corridor #2 income offsets corridor #1's KAS spend. See [`docs/CORRIDOR2-RUNBOOK.md`](docs/CORRIDOR2-RUNBOOK.md).
+
+The KAS working float is **self-funding** (an auto-rebalancer recycles the payer↔payee loop), and health is on a dashboard panel. Not audited — see the disclaimer.
 
 ## How it works
 
-- **Base side** — [`@x402/express`](https://www.npmjs.com/package/@x402/express) middleware gates `/call` behind an x402 USDC payment, verified/settled by a hosted x402 facilitator (`https://x402.org/facilitator` on testnet; Coinbase CDP on mainnet). The buyer pays gaslessly via EIP-3009 — the facilitator pays the gas.
+**Corridor #1 (inbound):**
+
+- **Base side** — [`@x402/express`](https://www.npmjs.com/package/@x402/express) middleware gates `/call` behind an x402 USDC payment, verified/settled by a hosted x402 facilitator (`https://x402.org/facilitator` on testnet; Coinbase CDP on mainnet). The buyer pays gaslessly via EIP-3009 — the facilitator pays the gas. The route advertises a canonical resource URL + a [bazaar discovery extension](https://www.npmjs.com/package/@x402/extensions) so CDP catalogs it and agents can discover it.
 - **Kaspa side** — on payment, the handler shells out to [`kx402`](https://www.npmjs.com/package/kx402) to pay the target Kaspa x402 gateway in KAS and returns its result. Only whitelisted Kaspa services are proxied (no arbitrary URLs).
+
+**Corridor #2 (outbound):** a Kaspa x402 gateway collects KAS, then calls the router's secret-gated `/outbound`, which pays the target Base x402 service as a client (`src/outbound.mjs`, gasless EIP-3009). Only whitelisted Base targets are payable (no arbitrary URLs). The KAS→Base leg is priced by the collecting gateway (Base cost + margin). Full wiring in [`docs/CORRIDOR2-RUNBOOK.md`](docs/CORRIDOR2-RUNBOOK.md).
 
 ## Quickstart
 
@@ -62,7 +71,9 @@ The `max()` accounts for the gateways' 0.5-KAS floor, so cheap services never se
 - ~~Self-funding: KAS auto-rebalancer (payer↔payee loop)~~ ✓
 - ~~Health monitoring (dashboard panel)~~ ✓
 - ~~Hardening: serialized KAS settlement, durable failed-settlement log, reject-before-charge, active alerting~~ ✓ · remaining: auto-refund
-- Corridor #2 — **outbound** (Kaspa agents paying for Base x402 services): the outbound leg is **proven** (`src/outbound.mjs`, `/outbound`); remaining is a Kaspa x402 gateway to *collect* the KAS.
+- ~~Bazaar discovery — canonical resource URL + discovery extension, indexed on agentic.market~~ ✓
+- ~~Corridor #2 — **outbound** (Kaspa agents paying for Base x402 services)~~ ✓ — **certified end-to-end on mainnet** (see the runbook)
+- Remaining: per-target dynamic pricing for corridor #2, multi-UTXO payer for concurrency, auto-refund
 - More chains — the router is the wedge into Kaspa-as-an-interop-hub
 
 ## Layout
@@ -73,8 +84,9 @@ The `max()` accounts for the gateways' 0.5-KAS floor, so cheap services never se
 - `src/alert.mjs` — alerting: rebalancer stale/starved, float low, router down, failed settlements (set `ALERT_WEBHOOK`)
 - `src/buyer.mjs` — a test client that pays and fetches (corridor #1)
 - `src/outbound.mjs` — corridor #2 outbound leg: pay a Base x402 service as a client
-- `src/echo-target.mjs` — a minimal Base x402 service used to test the outbound leg
+- `src/echo-target.mjs` — a minimal Base x402 service used to test the outbound leg (Sepolia or, with CDP keys, mainnet)
 - `src/services.mjs` — whitelists: Kaspa gateways (each with its USD price) + Base targets
+- `docs/CORRIDOR2-RUNBOOK.md` — deploy + certify the outbound (Kaspa → Base) corridor
 
 ## License
 
