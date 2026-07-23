@@ -26,6 +26,9 @@ const facilitatorClient = new HTTPFacilitatorClient(useCdp ? createFacilitatorCo
 const resourceServer = new x402ResourceServer(facilitatorClient).register(EVM_NETWORK, new ExactEvmScheme());
 
 const app = express();
+// Behind the Cloudflare tunnel (TLS terminated upstream), so trust X-Forwarded-Proto/Host — otherwise
+// the x402 resource URL is built as http:// and the CDP bazaar won't catalog it.
+app.set("trust proxy", true);
 
 // --- unpaid routes ---
 app.get("/", (_req, res) =>
