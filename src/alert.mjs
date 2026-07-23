@@ -64,17 +64,14 @@ let bz = { listed: false };
 try { bz = JSON.parse(fs.readFileSync(BAZAAR_STATUS, "utf8")); } catch {}
 if (!bz.listed) {
   try {
-    const { createFacilitatorConfig } = await import("@coinbase/x402");
-    const fc = createFacilitatorConfig();
-    const auth = fc.createAuthHeaders ? await fc.createAuthHeaders("discovery/search") : { headers: {} };
-    const res = await fetch(fc.url + "/discovery/search?q=" + encodeURIComponent("kaspa-402"), { headers: auth.headers || {}, signal: AbortSignal.timeout(15000) });
+    const res = await fetch("https://api.agentic.market/v1/services/search?q=" + encodeURIComponent("router.kaspa-402.org"), { signal: AbortSignal.timeout(15000) });
     const j = await res.json();
-    const items = j.resources || j.items || [];
-    const mine = items.filter((r) => JSON.stringify(r).includes("kaspa-402.org"));
+    const items = j.services || j.results || j.items || [];
+    const mine = items.filter((s) => JSON.stringify(s).includes("router.kaspa-402.org"));
     const listed = mine.length > 0;
-    const resource = mine[0]?.resource || mine[0]?.resourceUrl || null;
+    const resource = mine[0]?.name || (mine[0]?.endpoints || [{}])[0]?.url || null;
     if (listed) {
-      const msg = `🎉 **kaspa-x402-router** is now LISTED in the Coinbase x402 Bazaar — agents can discover it${resource ? ` (${resource})` : ""}`;
+      const msg = `🎉 **kaspa-x402-router** is now LISTED on agentic.market (Coinbase's x402 marketplace) — agents can discover it${resource ? ` (${resource})` : ""}`;
       if (WEBHOOK) { try { await fetch(WEBHOOK, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ content: msg }) }); } catch {} }
       try { fs.appendFileSync(`${HOME}/.k402/router-alerts.log`, `${new Date().toISOString()} ${msg}\n`); } catch {}
       console.log(msg);

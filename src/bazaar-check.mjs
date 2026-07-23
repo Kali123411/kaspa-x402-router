@@ -1,24 +1,19 @@
-// Check whether the router is listed in the Coinbase CDP x402 Bazaar (discovery catalog).
-// CDP indexes asynchronously, so run this periodically after payments have flowed through.
+// Check whether the router is listed on agentic.market (Coinbase's public x402 marketplace, the
+// front-end of the CDP x402 discovery catalog). Public endpoint, no auth.
 //   node src/bazaar-check.mjs
-import { config } from "dotenv";
-import { createFacilitatorConfig } from "@coinbase/x402";
-config({ path: process.env.ENV_FILE || ".env.mainnet" });
-
-const fc = createFacilitatorConfig();
-const auth = fc.createAuthHeaders ? await fc.createAuthHeaders("discovery/search") : { headers: {} };
-const res = await fetch(fc.url + "/discovery/search?q=" + encodeURIComponent("kaspa-402"), {
-  headers: auth.headers || {}, signal: AbortSignal.timeout(15000),
+const Q = "router.kaspa-402.org";
+const res = await fetch("https://api.agentic.market/v1/services/search?q=" + encodeURIComponent(Q), {
+  signal: AbortSignal.timeout(15000),
 });
-const j = await res.json();
-const items = j.resources || j.items || [];
-const mine = items.filter((r) => JSON.stringify(r).includes("kaspa-402.org"));
+const j = await res.json().catch(() => ({}));
+const items = j.services || j.results || j.items || (Array.isArray(j) ? j : []);
+const mine = items.filter((s) => JSON.stringify(s).includes("router.kaspa-402.org"));
 
 if (mine.length) {
-  console.log("✅ LISTED in the CDP bazaar:");
-  for (const m of mine) console.log("   " + (m.resource || m.resourceUrl || JSON.stringify(m).slice(0, 120)));
+  console.log("✅ LISTED on agentic.market (& the CDP bazaar):");
+  for (const m of mine) console.log("   " + (m.name || m.id) + " — " + ((m.endpoints || [{}])[0].url || ""));
 } else {
-  console.log(`⏳ not indexed yet — searched ${items.length} results for "kaspa-402", none are ours.`);
-  console.log('   The router declares the bazaar extension and payments echo it; CDP indexes asynchronously.');
-  console.log('   Re-run this after more traffic / later. If it never appears, check the extension validates or ask CDP about their indexer.');
+  console.log(`⏳ not listed yet — searched agentic.market ("${Q}"), ${items.length} fuzzy result(s), none ours.`);
+  console.log("   The router declares the bazaar extension (https resource, valid schema) and payments echo it.");
+  console.log("   Coinbase's CDP indexer runs asynchronously; agentic.market surfaces it once indexed. Re-run later.");
 }
