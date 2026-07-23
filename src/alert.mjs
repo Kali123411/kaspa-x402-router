@@ -39,7 +39,7 @@ try { failedCount = fs.readFileSync(FAILED, "utf8").trim().split("\n").filter(Bo
 let last = { alerts: [], failedCount: 0 };
 try { last = JSON.parse(fs.readFileSync(STATE, "utf8")); } catch {}
 const newFails = failedCount - (last.failedCount || 0);
-if (newFails > 0) alerts.push(`🟠 ${newFails} new failed settlement(s) — buyer(s) owed a refund (router-failed-settlements.jsonl)`);
+if (newFails > 0) alerts.push(`🟠 ${newFails} new KAS-leg failure(s) — buyer NOT charged (settlement auto-cancelled); check the target gateway (router-failed-settlements.jsonl)`);
 
 const key = alerts.slice().sort().join("|");
 const lastKey = (last.alerts || []).slice().sort().join("|");

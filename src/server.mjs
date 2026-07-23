@@ -137,10 +137,13 @@ app.get("/call", async (req, res) => {
     const { result, settlement } = await payKaspaSerial(targetUrl);
     res.json({ ok: true, via: "kaspa-x402-router", target: targetUrl, kaspaSettlement: settlement, result });
   } catch (e) {
-    // USDC was already collected on Base. Record durably so the buyer can be refunded.
+    // The x402 middleware settles the USDC AFTER the handler and CANCELS on a >=400 response (see
+    // @x402/express: `if (res.statusCode >= 400) cancellationDispatcher.cancel()`), so returning 502
+    // here means the buyer's USDC is never collected — no refund is owed (verified on mainnet: a failed
+    // KAS leg left the buyer's balance unchanged). We log the failure for observability/alerting, not refunds.
     logFailedSettlement({ service, target: targetUrl, priceUsd: priceUsd(svc.usd), error: String(e).slice(0, 300) });
-    console.error("kaspa settlement failed (USDC already collected — logged for refund):", String(e).slice(0, 300));
-    res.status(502).json({ ok: false, error: "kaspa settlement failed — your payment was logged for refund" });
+    console.error("kaspa leg failed — USDC settlement auto-cancelled (buyer not charged):", String(e).slice(0, 300));
+    res.status(502).json({ ok: false, error: "kaspa settlement failed — you were not charged" });
   }
 });
 
@@ -158,7 +161,8 @@ app.get("/outbound", async (req, res) => {
   const qs = new URLSearchParams(rest).toString();
   const url = qs ? `${t.url}?${qs}` : t.url;
   try {
-    const base = await payBaseService(url);
+    // Cap the spend at the target's whitelisted price so a service can't overcharge the outbound payer.
+    const base = await payBaseService(url, { maxUsd: t.usd });
     res.json({ ok: true, via: "kaspa-x402-router (outbound)", target: url, base });
   } catch (e) {
     // KAS was already collected upstream here. MVP surfaces the failure; refund is a TODO.
@@ -176,8 +180,9 @@ function payKaspaSerial(url) {
   return run;
 }
 
-// Durable record of paid-but-unsettled calls (USDC collected, KAS leg failed) so no buyer is silently
-// charged — a manual/auto refund can be issued by matching the receiver's USDC inflow near `ts`.
+// Durable record of KAS-leg failures for observability/alerting. The buyer is NOT charged on these
+// (the x402 middleware cancels the USDC settlement when the handler returns >=400), so this is a
+// "which gateway is failing" signal, not a refund ledger.
 const FAILED_LOG = process.env.HOME + "/.k402/router-failed-settlements.jsonl";
 function logFailedSettlement(rec) {
   try {
