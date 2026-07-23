@@ -10,7 +10,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { createFacilitatorConfig } from "@coinbase/x402";
-import { SERVICES, DEFAULT_USD, BASE_TARGETS } from "./services.mjs";
+import { SERVICES, DEFAULT_USD, BASE_TARGETS, buildTargetUrl } from "./services.mjs";
 import { refreshRate, rateInfo, priceUsd } from "./pricing.mjs";
 import { payBaseService } from "./outbound.mjs";
 config({ path: process.env.ENV_FILE || ".env" });
@@ -158,8 +158,12 @@ app.get("/outbound", async (req, res) => {
   if (!t) {
     return res.status(400).json({ error: `unknown base target '${target}'; choose: ${Object.keys(BASE_TARGETS).join(", ")}` });
   }
-  const qs = new URLSearchParams(rest).toString();
-  const url = qs ? `${t.url}?${qs}` : t.url;
+  let url;
+  try {
+    url = buildTargetUrl(t, rest); // substitute validated path params (e.g. {contract}); rest → query
+  } catch (e) {
+    return res.status(400).json({ error: String(e.message) });
+  }
   try {
     // Cap the spend at the target's whitelisted price so a service can't overcharge the outbound payer.
     const base = await payBaseService(url, { maxUsd: t.usd });
