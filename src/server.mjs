@@ -50,11 +50,23 @@ app.get("/", (_req, res) =>
 );
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
-// Pre-check /call BEFORE the payment gate: reject an unknown service with a clean 400 so a buyer is
-// never charged for a call we can't fulfill.
+// Pre-check /call BEFORE the payment gate. The buyer's payment rides in the X-PAYMENT header, so we
+// can tell a discovery probe (no header) from a real paid call and never settle one we can't fulfill:
+//   • present-but-unknown service (a typo) → clean 400 (and, if paid, before the gate settles)
+//   • service entirely absent + PAID       → 400 before the gate settles (never charge for nothing)
+//   • service entirely absent + UNPAID     → fall through so the 402 gate answers — this makes the
+//     canonical query-less /call a valid, crawlable x402 resource for discovery.
 app.get("/call", (req, res, next) => {
-  if (!SERVICES[req.query.service]) {
-    return res.status(400).json({ error: `unknown service '${req.query.service ?? ""}'; choose one of: ${Object.keys(SERVICES).join(", ")}` });
+  const svc = req.query.service;
+  if (!SERVICES[svc]) {
+    const choices = Object.keys(SERVICES).join(", ");
+    if (svc !== undefined) {
+      return res.status(400).json({ error: `unknown service '${svc}'; choose one of: ${choices}` });
+    }
+    if (req.get("x-payment")) {
+      return res.status(400).json({ error: `no service specified; choose one of: ${choices}` });
+    }
+    // unpaid + no service → discovery probe: let the payment gate respond with a 402.
   }
   next();
 });
